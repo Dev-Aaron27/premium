@@ -7,7 +7,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Session middleware
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'secret',
@@ -16,25 +18,22 @@ app.use(
   })
 );
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 // Health check
 app.get('/', (req, res) => {
   res.send('Discord OAuth2 Backend Running');
 });
 
-// Discord OAuth2 login
+// OAuth login route
 app.get('/auth/discord', (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID;
   const redirectUri = encodeURIComponent(process.env.DISCORD_REDIRECT_URI);
   const scope = encodeURIComponent('identify email guilds.join');
-
+  
   const discordUrl = `https://discord.com/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
   res.redirect(discordUrl);
 });
 
-// OAuth2 callback
+// OAuth callback route
 app.get('/auth/discord/callback', async (req, res) => {
   const code = req.query.code;
   if (!code) return res.status(400).send('No code provided');
@@ -54,7 +53,10 @@ app.get('/auth/discord/callback', async (req, res) => {
       body: data,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
+
     const tokenJson = await tokenResponse.json();
+    if (!tokenJson.access_token) return res.status(500).send('Failed to get access token');
+
     const accessToken = tokenJson.access_token;
 
     // Fetch user info
@@ -63,7 +65,7 @@ app.get('/auth/discord/callback', async (req, res) => {
     });
     const user = await userResponse.json();
 
-    // Add user to your server with role
+    // Add user to guild with role
     const guildId = process.env.GUILD_ID;
     const roleId = process.env.ROLE_ID;
 
@@ -79,13 +81,18 @@ app.get('/auth/discord/callback', async (req, res) => {
       })
     });
 
-    // Redirect to frontend with safe user info
+    // Store user in session
+    req.session.user = user;
+
+    // Redirect to frontend with encoded user info
     const encodedUser = Buffer.from(JSON.stringify(user)).toString('base64');
-    res.redirect(`${process.env.FRONTEND_URL || '/'}?token=${encodedUser}`);
+    const redirectTo = process.env.FRONTEND_URL || '/';
+    res.redirect(`${redirectTo}?token=${encodedUser}`);
   } catch (error) {
-    console.error('OAuth callback error:', error);
+    console.error(error);
     res.status(500).send('Error logging in with Discord');
   }
 });
 
+// Start server
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
