@@ -87,7 +87,8 @@ app.get('/auth/discord/callback', async (req, res) => {
     // Redirect to frontend with encoded user info
     const encodedUser = Buffer.from(JSON.stringify(user)).toString('base64');
     const redirectTo = process.env.FRONTEND_URL || '/';
-    res.redirect(`${redirectTo}?token=${encodedUser}`);
+    const separator = redirectTo.includes('?') ? '&' : '?';
+res.redirect(`${redirectTo}${separator}token=${encodedUser}`);
   } catch (error) {
     console.error(error);
     res.status(500).send('Error logging in with Discord');
