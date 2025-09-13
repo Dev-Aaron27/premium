@@ -7,10 +7,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Session middleware (required for OAuth)
+// Session middleware
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'secret',
@@ -18,6 +15,9 @@ app.use(
     saveUninitialized: false
   })
 );
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get('/', (req, res) => {
@@ -34,7 +34,7 @@ app.get('/auth/discord', (req, res) => {
   res.redirect(discordUrl);
 });
 
-// Discord OAuth2 callback
+// OAuth2 callback
 app.get('/auth/discord/callback', async (req, res) => {
   const code = req.query.code;
   if (!code) return res.status(400).send('No code provided');
@@ -54,7 +54,6 @@ app.get('/auth/discord/callback', async (req, res) => {
       body: data,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
-
     const tokenJson = await tokenResponse.json();
     const accessToken = tokenJson.access_token;
 
@@ -64,9 +63,9 @@ app.get('/auth/discord/callback', async (req, res) => {
     });
     const user = await userResponse.json();
 
-    // Add user to your server
-    const guildId = '1405279831272198144';
-    const roleId = '1405280762915455006';
+    // Add user to your server with role
+    const guildId = process.env.GUILD_ID;
+    const roleId = process.env.ROLE_ID;
 
     await fetch(`https://discord.com/api/guilds/${guildId}/members/${user.id}`, {
       method: 'PUT',
@@ -80,11 +79,11 @@ app.get('/auth/discord/callback', async (req, res) => {
       })
     });
 
-    // Redirect to frontend with safe token
+    // Redirect to frontend with safe user info
     const encodedUser = Buffer.from(JSON.stringify(user)).toString('base64');
-    res.redirect(`${process.env.FRONTEND_URL}/?token=${encodedUser}`);
+    res.redirect(`${process.env.FRONTEND_URL || '/'}?token=${encodedUser}`);
   } catch (error) {
-    console.error(error);
+    console.error('OAuth callback error:', error);
     res.status(500).send('Error logging in with Discord');
   }
 });
