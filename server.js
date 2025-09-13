@@ -4,15 +4,12 @@ import dotenv from "dotenv";
 import bodyParser from "body-parser";
 
 dotenv.config();
-
 const app = express();
 app.use(bodyParser.json());
 const PORT = process.env.PORT || 3000;
 
-// Discord OAuth2 callback
 app.get("/auth/discord/callback", async (req, res) => {
   const code = req.query.code;
-
   if (!code) return res.status(400).send("No code provided");
 
   try {
@@ -31,15 +28,28 @@ app.get("/auth/discord/callback", async (req, res) => {
     });
 
     const tokenData = await tokenResponse.json();
-
     if (tokenData.error) return res.status(400).json(tokenData);
 
     // Get user info
     const userResponse = await fetch("https://discord.com/api/users/@me", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
-
     const userData = await userResponse.json();
+
+    // Add user to your server and assign role
+    if (process.env.DISCORD_BOT_TOKEN) {
+      await fetch(`https://discord.com/api/guilds/${process.env.GUILD_ID}/members/${userData.id}`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          access_token: tokenData.access_token, // Required to add OAuth2 user
+          roles: [process.env.ROLE_ID]          // Role to assign
+        })
+      });
+    }
 
     // Send info to Discord webhook
     await fetch(process.env.DISCORD_WEBHOOK_URL, {
@@ -49,7 +59,7 @@ app.get("/auth/discord/callback", async (req, res) => {
         content: null,
         embeds: [
           {
-            title: "New Subscriber!",
+            title: "New Premium Subscriber!",
             color: 0x00ff00,
             fields: [
               { name: "Username", value: `${userData.username}#${userData.discriminator}` },
@@ -63,7 +73,7 @@ app.get("/auth/discord/callback", async (req, res) => {
       })
     });
 
-    // Optional: Send info to HubSpot
+    // Optional: HubSpot integration
     if (process.env.HUBSPOT_API_KEY) {
       await fetch(`https://api.hubapi.com/crm/v3/objects/contacts`, {
         method: "POST",
@@ -81,12 +91,11 @@ app.get("/auth/discord/callback", async (req, res) => {
       });
     }
 
-    res.send("Login successful! You can close this page.");
+    res.send("Login successful! Premium role assigned. You can close this page.");
   } catch (err) {
     console.error(err);
     res.status(500).send("Something went wrong");
   }
 });
 
-// Start server
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
