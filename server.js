@@ -11,18 +11,20 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Session middleware (required for OAuth)
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'secret',
-  resave: false,
-  saveUninitialized: false
-}));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'secret',
+    resave: false,
+    saveUninitialized: false
+  })
+);
 
-// Home route
+// Health check
 app.get('/', (req, res) => {
   res.send('Discord OAuth2 Backend Running');
 });
 
-// Discord OAuth route
+// Discord OAuth2 login
 app.get('/auth/discord', (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID;
   const redirectUri = encodeURIComponent(process.env.DISCORD_REDIRECT_URI);
@@ -32,7 +34,7 @@ app.get('/auth/discord', (req, res) => {
   res.redirect(discordUrl);
 });
 
-// Discord OAuth callback
+// Discord OAuth2 callback
 app.get('/auth/discord/callback', async (req, res) => {
   const code = req.query.code;
   if (!code) return res.status(400).send('No code provided');
@@ -52,6 +54,7 @@ app.get('/auth/discord/callback', async (req, res) => {
       body: data,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
+
     const tokenJson = await tokenResponse.json();
     const accessToken = tokenJson.access_token;
 
@@ -61,14 +64,28 @@ app.get('/auth/discord/callback', async (req, res) => {
     });
     const user = await userResponse.json();
 
-    // Store in session
-    req.session.user = user;
+    // Add user to your server
+    const guildId = '1405279831272198144';
+    const roleId = '1405280762915455006';
 
-    // For now, redirect to frontend
-    res.redirect('/?user=' + encodeURIComponent(JSON.stringify(user)));
+    await fetch(`https://discord.com/api/guilds/${guildId}/members/${user.id}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        access_token: accessToken,
+        roles: [roleId]
+      })
+    });
+
+    // Redirect to frontend with safe token
+    const encodedUser = Buffer.from(JSON.stringify(user)).toString('base64');
+    res.redirect(`${process.env.FRONTEND_URL}/?token=${encodedUser}`);
   } catch (error) {
     console.error(error);
-    res.status(500).send('Error fetching Discord user data');
+    res.status(500).send('Error logging in with Discord');
   }
 });
 
